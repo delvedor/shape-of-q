@@ -1,20 +1,43 @@
 {
   "name": "shape-of-q",
-  "version": "0.0.1",
-  "description": "",
+  "version": "0.1.0",
+  "description": "A simple and fast redis based queue",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "redis": "docker run -p 6379:6379 --rm redis:3.0.7",
+    "test": "standard && tap test.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/delvedor/shape-of-q.git"
   },
-  "keywords": [],
+  "keywords": [
+    "redis",
+    "queue",
+    "speed",
+    "simple",
+    "fifo",
+    "lifo"
+  ],
   "author": "Tomas Della Vedova - @delvedor (http://delved.org)",
+  "contributors": [
+    {
+      "name": "Valerio Barrila",
+      "url": "http://valeriobarrila.me/"
+    }
+  ],
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/delvedor/shape-of-q/issues"
   },
-  "homepage": "https://github.com/delvedor/shape-of-q#readme"
+  "homepage": "https://github.com/delvedor/shape-of-q#readme",
+  "dependencies": {
+    "debug": "^3.1.0",
+    "ioredis": "^3.2.2"
+  },
+  "devDependencies": {
+    "randomstring": "^1.1.5",
+    "standard": "^11.0.1",
+    "tap": "^11.1.3"
+  }
 }
