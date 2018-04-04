@@ -1,6 +1,6 @@
 # shape-of-q
 
-[![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](http://standardjs.com/)
+[![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](http://standardjs.com/)  [![Build Status](https://travis-ci.org/delvedor/shape-of-q.svg?branch=master)](https://travis-ci.org/delvedor/shape-of-q)
 
 A simple and fast redis based queue, supports both *fifo* and *lifo*.
 
