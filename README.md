@@ -46,11 +46,17 @@ const q = require('shape-of-q')('myqueue', {
   encoding: 'json', // default: null
   type: 'lifo', // default: 'fifo'
   client: Object, // custom redis client
-  host: '127.0.0.1' // redis host for the internal client
+  host: '127.0.0.1' // redis host for the internal client,
+  encoder: msgpack.encode, // default null
+  decoder: msgpack.decode, // default null
+  binaryData: true // default false
 })
 ```
 
 `shape-of-q` is an event emitter and you should listen for the `error` event.
+
+If you are working with objects and want to speed up the serialization you can use the `encoder` and `decoder` option, both of them must be sync functions.<br>
+If the `encoder` produces binary data make sure to pass `{ binaryData: true }` as option.
 
 #### `push`
 
