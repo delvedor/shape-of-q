@@ -3,6 +3,7 @@
 const test = require('tap').test
 const randomstring = require('randomstring')
 const ShapeOfQ = require('./index')
+const noop = () => {}
 
 test('Should create a fifo queue', t => {
   t.plan(3)
@@ -110,4 +111,31 @@ test('List elements of a queue (with promises)', t => {
       t.fail(err)
       q.stop()
     })
+})
+
+test('Share same client', t => {
+  t.plan(6)
+  const q1 = ShapeOfQ(randomstring.generate())
+  const q2 = ShapeOfQ(randomstring.generate(), { client: q1.redis })
+
+  q1.on('error', t.error)
+  q2.on('error', t.error)
+
+  const messages1 = ['hello', 'world', 'last']
+  const messages2 = ['hello', 'world', 'last']
+
+  messages1.forEach(msg => q1.push(msg))
+  messages2.forEach(msg => q2.push(msg))
+
+  q1.pull({ polling: true, pollingInterval: 1 }, (msg, done) => {
+    t.strictEqual(msg, messages1.shift())
+    if (messages1.length === 0) q1.stop(noop)
+    done()
+  })
+
+  q2.pull({ polling: true, pollingInterval: 1 }, (msg, done) => {
+    t.strictEqual(msg, messages2.shift())
+    if (messages2.length === 0) q2.stop(noop)
+    done()
+  })
 })
