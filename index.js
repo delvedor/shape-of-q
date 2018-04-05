@@ -23,6 +23,11 @@ function ShapeOfQ (queueName, opts) {
 inherits(ShapeOfQ, EventEmitter)
 
 ShapeOfQ.prototype.pull = function (opts, callback) {
+  const readQueue = () => {
+    debug('Reading from the queue')
+    this.redis.rpop(this.queueName, onResult)
+  }
+
   if (typeof opts === 'function') {
     callback = opts
     opts = {}
@@ -30,23 +35,24 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
 
   const polling = opts.polling === true
   const pollingInterval = opts.pollingInterval || 10
-  const that = this
   process.nextTick(readQueue)
 
-  function readQueue () {
-    debug('Reading from the queue')
-    that.redis.rpop(that.queueName, onResult)
-  }
+  const onResult = (err, result) => {
+    const done = (err) => {
+      if (err) this.push(result)
+      if (polling === true && this.stopping === false) {
+        process.nextTick(readQueue)
+      }
+    }
 
-  function onResult (err, result) {
     if (err) {
       debug('An error occured while reading from the queue', err)
-      that.emit('error', err)
+      this.emit('error', err)
       return
     }
 
     if (result === null) {
-      if (polling === true && that.stopping === false) {
+      if (polling === true && this.stopping === false) {
         debug(`Queue is empty, read again in ${pollingInterval} seconds`)
         setTimeout(readQueue, pollingInterval * 1000)
         return
@@ -57,11 +63,11 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
       debug('Got a message:', result)
     }
 
-    if (that.encoding === 'json' && result !== null) {
+    if (this.encoding === 'json' && result !== null) {
       try {
         result = JSON.parse(result)
       } catch (err) {
-        that.emit('error', err)
+        this.emit('error', err)
         return
       }
     }
@@ -69,13 +75,6 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
     const exec = callback(result, done)
     if (exec != null && typeof exec.then === 'function') {
       exec.then(() => done(), err => done(err))
-    }
-
-    function done (err) {
-      if (err) that.push(result)
-      if (polling === true && that.stopping === false) {
-        process.nextTick(readQueue)
-      }
     }
   }
 }
