@@ -3,7 +3,7 @@
 const EventEmitter = require('events').EventEmitter
 const inherits = require('util').inherits
 const assert = require('assert')
-const debug = require('debug')('redisq')
+const debug = require('debug')('shapeofq')
 const Redis = require('ioredis')
 
 function ShapeOfQ (queueName, opts) {
@@ -23,6 +23,11 @@ function ShapeOfQ (queueName, opts) {
 inherits(ShapeOfQ, EventEmitter)
 
 ShapeOfQ.prototype.pull = function (opts, callback) {
+  const readQueue = () => {
+    debug('Reading from the queue')
+    this.redis.rpop(this.queueName, onResult)
+  }
+
   if (typeof opts === 'function') {
     callback = opts
     opts = {}
@@ -30,50 +35,46 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
 
   const polling = opts.polling === true
   const pollingInterval = opts.pollingInterval || 10
-  const that = this
-  readQueue()
+  process.nextTick(readQueue)
 
-  function readQueue () {
-    debug('Reading from the queue')
-    that.redis.brpop(that.queueName, pollingInterval, onResult)
-  }
+  const onResult = (err, result) => {
+    const done = (err) => {
+      if (err) this.push(result)
+      if (polling === true && this.stopping === false) {
+        process.nextTick(readQueue)
+      }
+    }
 
-  function onResult (err, result) {
     if (err) {
       debug('An error occured while reading from the queue', err)
-      that.emit('error', err)
+      this.emit('error', err)
       return
     }
 
     if (result === null) {
-      if (polling === true && that.stopping === false) {
-        debug('Queue is empty, read again')
-        readQueue()
+      if (polling === true && this.stopping === false) {
+        debug(`Queue is empty, read again in ${pollingInterval} seconds`)
+        setTimeout(readQueue, pollingInterval * 1000)
+        return
       } else {
         debug('Queue is empty')
       }
-      return
+    } else {
+      debug('Got a message:', result)
     }
 
-    var message = result[1]
-    debug('Got a message:', message)
-    if (that.encoding === 'json') {
+    if (this.encoding === 'json' && result !== null) {
       try {
-        message = JSON.parse(message)
+        result = JSON.parse(result)
       } catch (err) {
-        that.emit('error', err)
+        this.emit('error', err)
         return
       }
     }
 
-    const exec = callback(message, done)
+    const exec = callback(result, done)
     if (exec != null && typeof exec.then === 'function') {
       exec.then(() => done(), err => done(err))
-    }
-
-    function done (err) {
-      if (err) that.push(message)
-      if (polling === true && that.stopping === false) readQueue()
     }
   }
 }
@@ -109,6 +110,15 @@ ShapeOfQ.prototype.list = function (cb) {
 ShapeOfQ.prototype.stop = function (done) {
   debug('Closing queue')
   this.stopping = true
+
+  if (done === undefined) {
+    return new Promise((resolve, reject) => {
+      this.redis.quit(err => {
+        err ? reject(err) : resolve()
+      })
+    })
+  }
+
   this.redis.quit(done)
 }
 
