@@ -102,6 +102,16 @@ Stops the polling and closes the connection to redis.
 q.stop()
 ```
 
+#### `flush`
+
+Flushes a queue removing all its elements.
+
+```js
+q.flush((err) => {
+  if (err) console.log(err)
+})
+```
+
 ## License
 
 MIT

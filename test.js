@@ -157,3 +157,21 @@ test('Not polling mode', t => {
     })
   })
 })
+
+test('Flush a queue', t => {
+  t.plan(3)
+  const q = ShapeOfQ(randomstring.generate())
+  q.on('error', t.error)
+  q.push('foo')
+  q.push('bar')
+
+  q.flush((err, res) => {
+    t.error(err)
+    t.strictEqual(res, 1)
+    q.pull((msg, done) => {
+      t.strictEqual(msg, null)
+      q.stop(noop)
+      done()
+    })
+  })
+})

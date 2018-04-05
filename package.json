@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "redis": "docker run -p 6379:6379 --rm redis:3.0.7",
-    "test": "standard && tap test.js"
+    "test": "standard && tap -j4 test.js"
   },
   "repository": {
     "type": "git",

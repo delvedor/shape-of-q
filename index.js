@@ -22,14 +22,14 @@ function ShapeOfQ (queueName, opts) {
 
 inherits(ShapeOfQ, EventEmitter)
 
-ShapeOfQ.prototype.pull = function (opts, callback) {
+ShapeOfQ.prototype.pull = function (opts, cb) {
   const readQueue = () => {
     debug('Reading from the queue')
     this.redis.rpop(this.queueName, onResult)
   }
 
   if (typeof opts === 'function') {
-    callback = opts
+    cb = opts
     opts = {}
   }
 
@@ -72,7 +72,7 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
       }
     }
 
-    const exec = callback(result, done)
+    const exec = cb(result, done)
     if (exec != null && typeof exec.then === 'function') {
       exec.then(() => done(), err => done(err))
     }
@@ -107,11 +107,11 @@ ShapeOfQ.prototype.list = function (cb) {
   this.redis.lrange(this.queueName, 0, -1, cb)
 }
 
-ShapeOfQ.prototype.stop = function (done) {
+ShapeOfQ.prototype.stop = function (cb) {
   debug('Closing queue')
   this.stopping = true
 
-  if (done === undefined) {
+  if (cb === undefined) {
     return new Promise((resolve, reject) => {
       this.redis.quit(err => {
         err ? reject(err) : resolve()
@@ -119,7 +119,21 @@ ShapeOfQ.prototype.stop = function (done) {
     })
   }
 
-  this.redis.quit(done)
+  this.redis.quit(cb)
+}
+
+ShapeOfQ.prototype.flush = function (cb) {
+  debug('Flushing queue')
+
+  if (cb === undefined) {
+    return new Promise((resolve, reject) => {
+      this.redis.del(this.queueName, (err) => {
+        err ? reject(err) : resolve()
+      })
+    })
+  }
+
+  this.redis.del(this.queueName, cb)
 }
 
 module.exports = ShapeOfQ
