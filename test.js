@@ -139,3 +139,21 @@ test('Share same client', t => {
     done()
   })
 })
+
+test('Not polling mode', t => {
+  t.plan(2)
+  const q = ShapeOfQ(randomstring.generate())
+  q.on('error', t.error)
+  q.push('hello')
+
+  q.pull((msg, done) => {
+    t.strictEqual(msg, 'hello')
+    done()
+
+    q.pull((msg, done) => {
+      t.strictEqual(msg, null)
+      q.stop(noop)
+      done()
+    })
+  })
+})

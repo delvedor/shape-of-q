@@ -49,14 +49,15 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
       if (polling === true && that.stopping === false) {
         debug(`Queue is empty, read again in ${pollingInterval} seconds`)
         setTimeout(readQueue, pollingInterval * 1000)
+        return
       } else {
         debug('Queue is empty')
       }
-      return
+    } else {
+      debug('Got a message:', result)
     }
 
-    debug('Got a message:', result)
-    if (that.encoding === 'json') {
+    if (that.encoding === 'json' && result !== null) {
       try {
         result = JSON.parse(result)
       } catch (err) {
