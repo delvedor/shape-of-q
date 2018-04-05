@@ -3,7 +3,7 @@
 const EventEmitter = require('events').EventEmitter
 const inherits = require('util').inherits
 const assert = require('assert')
-const debug = require('debug')('redisq')
+const debug = require('debug')('shapeofq')
 const Redis = require('ioredis')
 
 function ShapeOfQ (queueName, opts) {
@@ -31,11 +31,11 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
   const polling = opts.polling === true
   const pollingInterval = opts.pollingInterval || 10
   const that = this
-  readQueue()
+  process.nextTick(readQueue)
 
   function readQueue () {
     debug('Reading from the queue')
-    that.redis.brpop(that.queueName, pollingInterval, onResult)
+    that.redis.rpop(that.queueName, onResult)
   }
 
   function onResult (err, result) {
@@ -47,33 +47,34 @@ ShapeOfQ.prototype.pull = function (opts, callback) {
 
     if (result === null) {
       if (polling === true && that.stopping === false) {
-        debug('Queue is empty, read again')
-        readQueue()
+        debug(`Queue is empty, read again in ${pollingInterval} seconds`)
+        setTimeout(readQueue, pollingInterval * 1000)
       } else {
         debug('Queue is empty')
       }
       return
     }
 
-    var message = result[1]
-    debug('Got a message:', message)
+    debug('Got a message:', result)
     if (that.encoding === 'json') {
       try {
-        message = JSON.parse(message)
+        result = JSON.parse(result)
       } catch (err) {
         that.emit('error', err)
         return
       }
     }
 
-    const exec = callback(message, done)
+    const exec = callback(result, done)
     if (exec != null && typeof exec.then === 'function') {
       exec.then(() => done(), err => done(err))
     }
 
     function done (err) {
-      if (err) that.push(message)
-      if (polling === true && that.stopping === false) readQueue()
+      if (err) that.push(result)
+      if (polling === true && that.stopping === false) {
+        process.nextTick(readQueue)
+      }
     }
   }
 }
@@ -109,6 +110,15 @@ ShapeOfQ.prototype.list = function (cb) {
 ShapeOfQ.prototype.stop = function (done) {
   debug('Closing queue')
   this.stopping = true
+
+  if (done === undefined) {
+    return new Promise((resolve, reject) => {
+      this.redis.quit(err => {
+        err ? reject(err) : resolve()
+      })
+    })
+  }
+
   this.redis.quit(done)
 }
 
