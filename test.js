@@ -2,6 +2,8 @@
 
 const test = require('tap').test
 const randomstring = require('randomstring')
+const msgpack = require('msgpack5')()
+const protobuf = require('protocol-buffers')
 const ShapeOfQ = require('./index')
 const noop = () => {}
 
@@ -173,5 +175,64 @@ test('Flush a queue', t => {
       q.stop(noop)
       done()
     })
+  })
+})
+
+test('Custom encoder/decoder with msgpack', t => {
+  t.plan(1)
+  const q = ShapeOfQ(randomstring.generate(), {
+    encoder: msgpack.encode,
+    decoder: msgpack.decode,
+    binaryData: true
+  })
+
+  q.on('error', t.error)
+  q.push({ hello: 'world' })
+
+  q.pull((msg, done) => {
+    t.deepEqual(msg, { hello: 'world' })
+    done()
+    q.stop(noop)
+  })
+})
+
+test('Custom encoder/decoder with msgpack (empty message)', t => {
+  t.plan(1)
+  const q = ShapeOfQ(randomstring.generate(), {
+    encoder: msgpack.encode,
+    decoder: msgpack.decode,
+    binaryData: true
+  })
+
+  q.on('error', t.error)
+
+  q.pull((msg, done) => {
+    t.deepEqual(msg, null)
+    done()
+    q.stop(noop)
+  })
+})
+
+test('Custom encoder/decoder with protocol buffers', t => {
+  t.plan(1)
+  const messages = protobuf(`
+    message hello {
+      required string hello = 1;
+    }
+  `)
+
+  const q = ShapeOfQ(randomstring.generate(), {
+    encoder: messages.hello.encode,
+    decoder: messages.hello.decode,
+    binaryData: true
+  })
+
+  q.on('error', t.error)
+  q.push({ hello: 'world' })
+
+  q.pull((msg, done) => {
+    t.deepEqual(msg, { hello: 'world' })
+    done()
+    q.stop(noop)
   })
 })
