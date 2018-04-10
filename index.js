@@ -16,7 +16,13 @@ function ShapeOfQ (queueName, opts) {
   this.queueName = queueName
   this.encoding = opts.encoding || null
   this.type = opts.type || 'fifo'
-  this.redis = opts.client || new Redis({ host: opts.host })
+  this.encoder = opts.encoder || null
+  this.decoder = opts.decoder || null
+  this.binaryData = opts.binaryData || false
+  this.redis = opts.client || new Redis({
+    host: opts.host,
+    dropBufferSupport: !this.binaryData
+  })
   this.stopping = false
 }
 
@@ -25,7 +31,11 @@ inherits(ShapeOfQ, EventEmitter)
 ShapeOfQ.prototype.pull = function (opts, cb) {
   const readQueue = () => {
     debug('Reading from the queue')
-    this.redis.rpop(this.queueName, onResult)
+    if (this.binaryData === true) {
+      this.redis.rpopBuffer(this.queueName, onResult)
+    } else {
+      this.redis.rpop(this.queueName, onResult)
+    }
   }
 
   if (typeof opts === 'function') {
@@ -37,9 +47,9 @@ ShapeOfQ.prototype.pull = function (opts, cb) {
   const pollingInterval = opts.pollingInterval || 10
   process.nextTick(readQueue)
 
-  const onResult = (err, result) => {
+  const onResult = (err, message) => {
     const done = (err) => {
-      if (err) this.push(result)
+      if (err) this.push(message)
       if (polling === true && this.stopping === false) {
         process.nextTick(readQueue)
       }
@@ -51,7 +61,7 @@ ShapeOfQ.prototype.pull = function (opts, cb) {
       return
     }
 
-    if (result === null) {
+    if (message === null) {
       if (polling === true && this.stopping === false) {
         debug(`Queue is empty, read again in ${pollingInterval} seconds`)
         setTimeout(readQueue, pollingInterval * 1000)
@@ -60,19 +70,23 @@ ShapeOfQ.prototype.pull = function (opts, cb) {
         debug('Queue is empty')
       }
     } else {
-      debug('Got a message:', result)
+      debug('Got a message:', message)
     }
 
-    if (this.encoding === 'json' && result !== null) {
-      try {
-        result = JSON.parse(result)
-      } catch (err) {
-        this.emit('error', err)
-        return
+    if (message !== null) {
+      if (this.encoding === 'json') {
+        try {
+          message = JSON.parse(message)
+        } catch (err) {
+          this.emit('error', err)
+          return
+        }
+      } else if (this.decoder !== null) {
+        message = this.decoder(message)
       }
     }
 
-    const exec = cb(result, done)
+    const exec = cb(message, done)
     if (exec != null && typeof exec.then === 'function') {
       exec.then(() => done(), err => done(err))
     }
@@ -82,6 +96,8 @@ ShapeOfQ.prototype.pull = function (opts, cb) {
 ShapeOfQ.prototype.push = function (message) {
   if (this.encoding === 'json') {
     message = JSON.stringify(message)
+  } else if (this.encoder !== null) {
+    message = this.encoder(message)
   }
 
   const onPush = err => err && this.emit('error', err)
