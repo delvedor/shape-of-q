@@ -33,12 +33,11 @@
   "homepage": "https://github.com/delvedor/shape-of-q#readme",
   "dependencies": {
     "debug": "^3.1.0",
+    "fast-json-stringify": "^1.5.1",
     "ioredis": "^3.2.2"
   },
   "devDependencies": {
     "fastbench": "^1.0.1",
-    "msgpack5": "^4.0.2",
-    "protocol-buffers": "^4.0.4",
     "randomstring": "^1.1.5",
     "standard": "^11.0.1",
     "tap": "^11.1.3"

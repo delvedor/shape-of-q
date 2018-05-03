@@ -5,6 +5,26 @@ const inherits = require('util').inherits
 const assert = require('assert')
 const debug = require('debug')('shapeofq')
 const Redis = require('ioredis')
+const FJS = require('fast-json-stringify')
+
+const serializeObjectMessage = FJS({
+  type: 'object',
+  properties: {
+    retry: { type: 'integer' },
+    payload: {
+      type: 'object',
+      additionalProperties: true
+    }
+  }
+})
+
+const serializeStringMessage = FJS({
+  type: 'object',
+  properties: {
+    retry: { type: 'integer' },
+    payload: { type: 'string' }
+  }
+})
 
 function ShapeOfQ (queueName, opts) {
   if (!(this instanceof ShapeOfQ)) {
@@ -16,12 +36,10 @@ function ShapeOfQ (queueName, opts) {
   this.queueName = queueName
   this.encoding = opts.encoding || null
   this.type = opts.type || 'fifo'
-  this.encoder = opts.encoder || null
-  this.decoder = opts.decoder || null
-  this.binaryData = opts.binaryData || false
+  this.retries = opts.retries || 5
   this.redis = opts.client || new Redis({
     host: opts.host,
-    dropBufferSupport: !this.binaryData
+    dropBufferSupport: true
   })
   this.stopping = false
 }
@@ -29,15 +47,6 @@ function ShapeOfQ (queueName, opts) {
 inherits(ShapeOfQ, EventEmitter)
 
 ShapeOfQ.prototype.pull = function (opts, cb) {
-  const readQueue = () => {
-    debug('Reading from the queue')
-    if (this.binaryData === true) {
-      this.redis.rpopBuffer(this.queueName, onResult)
-    } else {
-      this.redis.rpop(this.queueName, onResult)
-    }
-  }
-
   if (typeof opts === 'function') {
     cb = opts
     opts = {}
@@ -45,11 +54,24 @@ ShapeOfQ.prototype.pull = function (opts, cb) {
 
   const polling = opts.polling === true
   const pollingInterval = opts.pollingInterval || 10
-  process.nextTick(readQueue)
+
+  const readQueue = () => {
+    if (this.stopping === true) return
+    debug('Reading from the queue')
+    this.redis.rpop(this.queueName, onResult)
+  }
 
   const onResult = (err, message) => {
     const done = (err) => {
-      if (err) this.push(message)
+      if (err != null && message !== null) {
+        if (message.retry < this.retries) {
+          debug('Queue handler has errored, put the message back into the queue', err.message, message)
+          this.push(message.payload, { _retry: message.retry + 1 })
+        } else {
+          this.emit('error', new Error('Broken message'), message.payload)
+        }
+      }
+
       if (polling === true && this.stopping === false) {
         process.nextTick(readQueue)
       }
@@ -71,56 +93,73 @@ ShapeOfQ.prototype.pull = function (opts, cb) {
       }
     } else {
       debug('Got a message:', message)
-    }
 
-    if (message !== null) {
-      if (this.encoding === 'json') {
-        try {
-          message = JSON.parse(message)
-        } catch (err) {
-          this.emit('error', err)
-          return
-        }
-      } else if (this.decoder !== null) {
-        message = this.decoder(message)
+      try {
+        message = JSON.parse(message)
+      } catch (err) {
+        this.emit('error', err)
+        return
       }
     }
 
-    const exec = cb(message, done)
+    const exec = cb(message ? message.payload : null, done)
     if (exec != null && typeof exec.then === 'function') {
       exec.then(() => done(), err => done(err))
     }
   }
+
+  process.nextTick(readQueue)
 }
 
-ShapeOfQ.prototype.push = function (message) {
-  if (this.encoding === 'json') {
-    message = JSON.stringify(message)
-  } else if (this.encoder !== null) {
-    message = this.encoder(message)
-  }
+ShapeOfQ.prototype.push = function (payload, opts) {
+  opts = opts || {}
 
   const onPush = err => err && this.emit('error', err)
+  const message = { retry: opts._retry || 0, payload }
 
   if (this.type === 'fifo') {
     debug('Pushing message to fifo queue:', message)
-    this.redis.lpush(this.queueName, message, onPush)
+    this.redis.lpush(
+      this.queueName,
+      typeof payload === 'string'
+        ? serializeStringMessage(message)
+        : serializeObjectMessage(message),
+      onPush
+    )
   } else if (this.type === 'lifo') {
     debug('Pushing message to lifo queue:', message)
-    this.redis.rpush(this.queueName, message, onPush)
+    this.redis.rpush(
+      this.queueName,
+      typeof payload === 'string'
+        ? serializeStringMessage(message)
+        : serializeObjectMessage(message),
+      onPush
+    )
   }
 }
 
 ShapeOfQ.prototype.list = function (cb) {
+  const onMessages = (err, messages) => {
+    if (err) return cb(err)
+
+    try {
+      var payloads = messages.map(msg => JSON.parse(msg).payload)
+    } catch (err) {
+      return cb(err)
+    }
+
+    cb(null, payloads)
+  }
+
   if (cb === undefined) {
     return new Promise((resolve, reject) => {
-      this.redis.lrange(this.queueName, 0, -1, (err, elements) => {
-        err ? reject(err) : resolve(elements)
+      this.list((err, payloads) => {
+        err ? reject(err) : resolve(payloads)
       })
     })
   }
 
-  this.redis.lrange(this.queueName, 0, -1, cb)
+  this.redis.lrange(this.queueName, 0, -1, onMessages)
 }
 
 ShapeOfQ.prototype.stop = function (cb) {
